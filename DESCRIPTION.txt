@@ -1,0 +1,88 @@
+# Đánh Giá Mức Độ Hoàn Thiện Hệ Thống Logging Infrastructure MVP
+
+## 1. Tầng Lập Trình Mạng & Hệ Thống Phân Tán (Trọng tâm lõi)
+
+### A. Các tính năng cốt lõi đã hoàn thiện
+
+| Tính năng                                 | Trạng thái   | Mô tả                                                                                                                                                                                      |
+| ----------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Custom Application Protocol & TCP Framing | ✅ Hoàn thiện | Hệ thống sử dụng giao thức truyền log nhị phân riêng với Magic Bytes, Type, Level, Sequence. Việc xử lý ranh giới message được thực hiện trên byte stream thay vì truyền chuỗi text tùy ý. |
+| ACK & Retry Mechanism                     | ✅ Hoàn thiện | Server chỉ gửi ACK sau khi xử lý thành công. Client duy trì log trong queue và tự động retry khi mất kết nối.                                                                              |
+| Deduplication                             | ✅ Hoàn thiện | Server sử dụng Sequence Number để phát hiện log bị gửi trùng do cơ chế retry. Log trùng được bỏ qua thao tác lưu nhưng vẫn trả ACK cho Client.                                             |
+| Checkpoint & Resynchronization            | ✅ Hoàn thiện | Khi Client reconnect, hai bên thực hiện handshake checkpoint thông qua Last_Sequence. Client chỉ gửi lại các log bị thiếu thay vì gửi toàn bộ dữ liệu.                                     |
+| Fault Injection                           | ✅ Hoàn thiện | Hệ thống hỗ trợ mô phỏng lỗi ngắt kết nối bằng Docker để kiểm thử khả năng phục hồi, đảm bảo không mất log và kiểm tra cơ chế deduplication.                                               |
+
+---
+
+### B. Các yêu cầu kỹ thuật nâng cao còn thiếu
+
+| Tính năng                         | Trạng thái        | Mô tả vấn đề                                                                                                                                                         |
+| --------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Append-Only Write-Ahead Log (WAL) | ❌ Chưa hoàn thiện | Persistent Queue hiện sử dụng bộ nhớ RAM (`ConcurrentHashMap`). Chưa có cơ chế ghi block binary format xuống ổ đĩa để phục hồi khi Client bị crash hoặc mất nguồn.   |
+| Heartbeat (PING/PONG)             | ❌ Chưa hoàn thiện | Chưa có cơ chế Client gửi PING định kỳ và Server phản hồi PONG. Hiện tại trạng thái ONLINE/OFFLINE phụ thuộc vào việc Socket phát sinh Exception.                    |
+| Checksum & TLS Security           | ❌ Chưa hoàn thiện | Chưa có checksum để kiểm tra toàn vẹn dữ liệu và phát hiện packet corruption. Chưa triển khai mã hóa TLS cho kết nối TCP.                                            |
+| Backpressure Flow Control         | ❌ Chưa hoàn thiện | Chưa có cơ chế Server theo dõi CPU/RAM và gửi tín hiệu điều chỉnh tốc độ gửi log khi hệ thống quá tải.                                                               |
+| Stateful TCP Byte Buffer          | ❌ Chưa hoàn thiện | Chưa xây dựng bộ đệm byte stream trạng thái riêng để xử lý đầy đủ trường hợp packet bị chia nhỏ trong quá trình truyền. Hiện tại chỉ dựa vào `readFully()` của Java. |
+
+---
+
+# 2. Tầng Nghiệp Vụ Website (Dashboard), Lưu Trữ & Tích Hợp
+
+## A. Các tính năng đã hoàn thiện
+
+| Tính năng             | Trạng thái   | Mô tả                                                                                                 |
+| --------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| Real-time Dashboard   | ✅ Hoàn thiện | Dashboard hiển thị trạng thái Client (ONLINE/OFFLINE) và log theo thời gian thực.                     |
+| Filtering & Searching | ✅ Hoàn thiện | Hỗ trợ tìm kiếm và lọc log theo Client, khoảng thời gian, Level và nội dung Payload.                  |
+| Chuẩn hóa Log Object  | ✅ Hoàn thiện | Log Object hiện có các trường cơ bản gồm Client_ID, Timestamp, Log_Level, Sequence_Number và Payload. |
+
+---
+
+## B. Các yêu cầu còn thiếu
+
+| Tính năng                         | Trạng thái        | Mô tả vấn đề                                                                                                                                                    |
+| --------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Database Persistent Storage       | ❌ Chưa hoàn thiện | Chưa triển khai database thực tế. MVP hiện lưu dữ liệu tạm thời trong RAM (`List`). Cần bổ sung SQLite, PostgreSQL hoặc MySQL với các bảng `logs` và `clients`. |
+| Adapter Pattern / SDK Integration | ❌ Chưa hoàn thiện | Chưa xây dựng Client SDK hoặc thư viện tích hợp cho Web, Mobile, Java. Agent hiện đang tự sinh log mô phỏng thay vì cung cấp API để ứng dụng bên ngoài gửi log. |
+| Extended Standard Log Fields      | ❌ Chưa hoàn thiện | Protocol hiện thiếu các trường mở rộng gồm `Application_ID`, `Message_ID` và `Event_Type` để hỗ trợ nhiều nguồn log độc lập.                                    |
+
+---
+
+# 3. Tổng Kết Đánh Giá MVP
+
+## Các điểm mạnh hiện tại
+
+* Đã xây dựng được nền tảng giao thức truyền log tin cậy trên TCP.
+* Có cơ chế đảm bảo delivery thông qua ACK, Retry và Deduplication.
+* Có khả năng phục hồi kết nối thông qua Checkpoint và Resynchronization.
+* Có Dashboard theo dõi log real-time và hỗ trợ tìm kiếm cơ bản.
+* Đã mô phỏng được các tình huống lỗi mạng để kiểm thử khả năng chịu lỗi.
+
+## Các hạng mục cần ưu tiên hoàn thiện tiếp theo
+
+1. **Persistent Storage Layer**
+
+   * Xây dựng WAL Append-Only Log.
+   * Tích hợp Database (`logs`, `clients`).
+   * Đảm bảo khả năng recovery sau crash.
+
+2. **Network Reliability Enhancement**
+
+   * Bổ sung Heartbeat PING/PONG.
+   * Thêm Checksum validation.
+   * Triển khai TLS encryption.
+   * Xây dựng Stateful TCP Buffer.
+
+3. **Scalability & Integration**
+
+   * Xây dựng Backpressure Flow Control.
+   * Phát triển Client SDK theo Adapter Pattern.
+   * Mở rộng Log Schema với Application_ID, Message_ID, Event_Type.
+
+---
+
+# Kết luận
+
+MVP hiện tại đã hoàn thiện phần lõi của một hệ thống Logging Infrastructure ở mức giao thức mạng phân tán, bao gồm truyền tin đáng tin cậy, xử lý lỗi mạng và đồng bộ dữ liệu sau reconnect.
+
+Các phần còn thiếu chủ yếu tập trung vào khả năng **production-ready**: lưu trữ bền vững, bảo mật, kiểm soát tải, khả năng mở rộng và tích hợp với nhiều ứng dụng khác nhau.

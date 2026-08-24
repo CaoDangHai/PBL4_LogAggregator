@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  log-server:
+    build: .
+    command: ["java", "-cp", "app.jar", "com.pbl4.logsync.server.LogServer"]
+    ports:
+      - "9000:9000"
+      - "8080:8080"
+
+  node-station-1:
+    build: .
+    command: ["java", "-cp", "app.jar", "com.pbl4.logsync.agent.SimulatedAgent"]
+    environment:
+      - SERVER_HOST=log-server
+      - NODE_ID=STATION_HANOI
+    depends_on:
+      - log-server
+
+  node-station-2:
+    build: .
+    command: ["java", "-cp", "app.jar", "com.pbl4.logsync.agent.SimulatedAgent"]
+    environment:
+      - SERVER_HOST=log-server
+      - NODE_ID=STATION_DANANG
+    depends_on:
+      - log-server
+
+  node-station-3:
+    build: .
+    command: ["java", "-cp", "app.jar", "com.pbl4.logsync.agent.SimulatedAgent"]
+    environment:
+      - SERVER_HOST=log-server
+      - NODE_ID=STATION_HCM
+    depends_on:
+      - log-server
