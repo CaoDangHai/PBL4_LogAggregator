@@ -1,0 +1,59 @@
+services:
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: pbl4_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    # --- THÊM HEALTHCHECK TẠI ĐÂY ---
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # --------------------------------
+
+  log_server:
+    build: .
+    container_name: pbl4_server
+    ports:
+      - "9000:9000"
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+    depends_on:
+      # --- ĐỔI ĐIỀU KIỆN DEPENDS_ON TẠI ĐÂY ---
+      postgres_db:
+        condition: service_healthy
+      # ----------------------------------------
+    command: ["java", "-cp", "app.jar", "com.dut.App"]
+
+  simulator:
+    build: .
+    container_name: pbl4_simulator
+    environment:
+      - SERVER_HOST=log_server
+    depends_on:
+      - log_server
+    command: ["java", "-cp", "app.jar", "com.dut.simulator.LogSimulatorApp"]
+
+  dashboard:
+    build: ./dashboard
+    container_name: pbl4_dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+    depends_on:
+      postgres_db:
+        condition: service_healthy
